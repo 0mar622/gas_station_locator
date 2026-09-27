@@ -12,6 +12,7 @@ if __package__:
     )
     from .services.stations import get_nearby_stations
     from .services.trip import save_trip
+    from .services.users import save_user
 else:
     from services.getFirebase import get_stations
     from services.routing import (
@@ -22,6 +23,7 @@ else:
     )
     from services.stations import get_nearby_stations
     from services.trip import save_trip
+    from services.users import save_user
 
 app = Flask(__name__)
 
@@ -41,6 +43,18 @@ def create_trip():
         return {"error": str(error)}, 400
     except RuntimeError:
         return {"error": "Check the backend Firestore credential configuration."}, 503
+
+
+@app.post("/users")
+def create_user():
+    try:
+        return {"status": "created", **save_user(request.get_json(silent=True))}, 201
+    except ValueError as error:
+        return {"error": str(error)}, 400
+    except RuntimeError:
+        return {"error": "Check the backend Firestore credential configuration."}, 503
+    except (GoogleAuthError, RequestException):
+        return {"error": "Unable to save the user to Firestore."}, 502
 
 
 @app.post("/trip/plan")
