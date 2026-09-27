@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, render_template, request
 from google.auth.exceptions import GoogleAuthError
 from requests.exceptions import RequestException
 
@@ -23,7 +23,12 @@ else:
     from services.stations import get_nearby_stations
     from services.trip import save_trip
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates", static_folder="static")
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
 
 
 @app.get("/health")

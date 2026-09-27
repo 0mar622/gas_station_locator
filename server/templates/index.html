@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gas Station Locator</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --card: #ffffff;
+        --border: #dfe7f3;
+        --primary: #1d4ed8;
+        --primary-dark: #163ea8;
+        --accent: #0f766e;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --danger: #b91c1c;
+        --success: #15803d;
+        --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+        color: var(--text);
+      }
+
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 40px 20px 60px;
+      }
+
+      .header {
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 3vw, 2.8rem);
+      }
+
+      .subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 24px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+      }
+
+      .form-card {
+        padding: 24px;
+      }
+
+      form {
+        display: grid;
+        gap: 18px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      label {
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 1rem;
+        background: #fff;
+        color: var(--text);
+      }
+
+      input:focus,
+      select:focus {
+        outline: 3px solid rgba(29, 78, 216, 0.12);
+        border-color: var(--primary);
+      }
+
+      .fuel-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 10px;
+      }
+
+      .primary-btn {
+        border: none;
+        border-radius: 10px;
+        background: var(--primary);
+        color: white;
+        font-weight: 700;
+        padding: 12px 20px;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .primary-btn:hover {
+        background: var(--primary-dark);
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      .result-card {
+        padding: 24px;
+      }
+
+      .result-card h2 {
+        margin-top: 0;
+        margin-bottom: 14px;
+        font-size: 1.45rem;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin: 18px 0 0;
+      }
+
+      .summary-item {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+
+      .summary-item .label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+      }
+
+      .summary-item .value {
+        font-weight: 700;
+        font-size: 1rem;
+      }
+
+      .map-box {
+        margin-top: 20px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #e2e8f0;
+        min-height: 280px;
+      }
+
+      .map-box iframe {
+        width: 100%;
+        min-height: 320px;
+        border: 0;
+      }
+
+      .stations-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .station-card {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--accent);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+
+      .station-card h3 {
+        margin: 0 0 8px;
+        font-size: 1.05rem;
+      }
+
+      .station-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .station-price {
+        margin-top: 10px;
+        font-weight: 700;
+        color: var(--success);
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.88rem;
+      }
+
+      @media (max-width: 800px) {
+        .grid,
+        .row,
+        .fuel-row,
+        .summary {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <h1>Gas Station Locator</h1>
+        <div class="subtitle">Plan a trip, estimate fuel needs, and compare trip details before you leave.</div>
+      </header>
+
+      <div class="grid">
+        <section class="card form-card">
+          <form id="trip-form" action="/trip/plan" method="post">
+            <div class="row">
+              <div class="field">
+                <label for="starting_location">Starting location</label>
+                <input id="starting_location" name="starting_location" type="text" placeholder="2500 Carlos Bee, Hayward CA" required />
+              </div>
+              <div class="field">
+                <label for="destination">Destination</label>
+                <input id="destination" name="destination" type="text" placeholder="Oakland, CA" required />
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="fuel_type">Fuel type</label>
+                <select id="fuel_type" name="fuel_type">
+                  <option value="Regular">Regular (87)</option>
+                  <option value="Midgrade">Midgrade (89)</option>
+                  <option value="Premium">Premium (91)</option>
+                  <option value="Diesel">#2 Diesel</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="payment_method">Payment method</label>
+                <select id="payment_method" name="payment_method">
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="vehicle_year">Vehicle year</label>
+              <input id="vehicle_year" name="vehicle_year" type="number" min="1950" max="2100" placeholder="2022" required />
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="vehicle_make">Vehicle make</label>
+                <input id="vehicle_make" name="vehicle_make" type="text" placeholder="Toyota" required />
+              </div>
+              <div class="field">
+                <label for="vehicle_model">Vehicle model</label>
+                <input id="vehicle_model" name="vehicle_model" type="text" placeholder="Camry" required />
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="vehicle_mpg">Vehicle MPG</label>
+                <input id="vehicle_mpg" name="vehicle_mpg" type="number" min="1" step="0.1" placeholder="30.2" required />
+              </div>
+              <div class="field">
+                <label for="fuel_capacity_gallons">Fuel tank capacity (gallons)</label>
+                <input id="fuel_capacity_gallons" name="fuel_capacity_gallons" type="number" min="1" step="0.1" placeholder="15.5" required />
+              </div>
+            </div>
+
+            <div class="fuel-row">
+              <div class="field">
+                <label for="current_fuel_gallons">Current Fuel Left (gallons)</label>
+                <input id="current_fuel_gallons" name="current_fuel_gallons" type="number" min="0" step="0.1" placeholder="5.4" required />
+              </div>
+              <div class="field">
+                <label for="current_fuel_percent">Current Fuel Left (%)</label>
+                <input id="current_fuel_percent" name="current_fuel_percent" type="number" min="0" max="100" step="0.1" placeholder="40" required />
+              </div>
+              <div class="field">
+                <label for="payment_amount">Payment amount</label>
+                <input id="payment_amount" name="payment_amount" type="number" min="0" step="0.01" placeholder="50.00" />
+              </div>
+            </div>
+
+            <div class="actions">
+              <button type="submit" class="primary-btn">Plan trip</button>
+              <div id="status" class="status" aria-live="polite">Ready to plan.</div>
+            </div>
+          </form>
+        </section>
+
+        <aside class="card result-card">
+          <h2>Trip preview</h2>
+          <p class="subtitle">The backend response will appear here.</p>
+
+          <div class="summary">
+            <div class="summary-item">
+              <span class="label">Range</span>
+              <span class="value" id="range-value">—</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Distance</span>
+              <span class="value" id="distance-value">—</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Duration</span>
+              <span class="value" id="duration-value">—</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Payment</span>
+              <span class="value" id="payment-value">—</span>
+            </div>
+          </div>
+
+          <div class="stations-list" id="stations-list"></div>
+
+          <div class="map-box">
+            <iframe id="route-map" title="Route map" srcdoc="<!doctype html><html><body style='margin:0;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#334155;'>Route map will appear here.</body></html>"></iframe>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
