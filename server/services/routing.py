@@ -7,7 +7,8 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from .stations import get_stations_near_route
+from .recommendation import rank_reachable_stations
+from .stations import closest_route_projection, get_stations_near_route
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HEIGIT_ORS_BASE_URL = "https://api.heigit.org"
@@ -90,6 +91,32 @@ def _validate_trip(data):
     }
 
 
+def validate_active_trip(data):
+    """Validate and normalize a persisted trip request."""
+    if not isinstance(data, dict):
+        raise ValueError("Send a JSON object with trip details.")
+    normalized = dict(data)
+    tank_capacity = _finite_number(data, "tank_capacity_gallons", minimum=0)
+    if tank_capacity <= 0:
+        raise ValueError("tank_capacity_gallons must be greater than zero.")
+    has_gallons = data.get("current_fuel_gallons") is not None
+    has_percent = data.get("current_fuel_percent") is not None
+    if has_gallons == has_percent:
+        raise ValueError("Provide exactly one of current_fuel_gallons or current_fuel_percent.")
+    if has_percent:
+        percent = _finite_number(data, "current_fuel_percent", minimum=0)
+        if percent > 100:
+            raise ValueError("current_fuel_percent must be at most 100.")
+        normalized["current_fuel_gallons"] = tank_capacity * percent / 100
+    else:
+        gallons = _finite_number(data, "current_fuel_gallons", minimum=0)
+        if gallons > tank_capacity:
+            raise ValueError("current_fuel_gallons cannot exceed tank capacity.")
+    normalized.update(_validate_trip(normalized))
+    normalized["tank_capacity_gallons"] = tank_capacity
+    return normalized
+
+
 def _geocode(session, address, api_key):
     response = session.get(
         f"{HEIGIT_ORS_BASE_URL}/pelias/v1/search",
@@ -167,6 +194,94 @@ def _get_route(session, origin, destination, api_key):
     if not math.isfinite(distance_meters) or not math.isfinite(duration_seconds):
         raise requests.RequestException("ORS route response is missing valid route geometry")
     return route, distance_meters, duration_seconds, coordinates
+
+
+def _get_matrix_distances(session, current_location, candidates, api_key):
+    """Fetch current-to-station and station-to-route distances in one matrix."""
+    count = len(candidates)
+    locations = [
+        [current_location["longitude"], current_location["latitude"]],
+        *[[station["longitude"], station["latitude"]] for station in candidates],
+        *[station["route_projection"] for station in candidates],
+    ]
+    sources = [str(index) for index in range(count + 1)]
+    destinations = [
+        *[str(index) for index in range(1, count + 1)],
+        *[str(index) for index in range(count + 1, count * 2 + 1)],
+    ]
+    response = session.post(
+        f"{HEIGIT_ORS_BASE_URL}/openrouteservice/v2/matrix/driving-car",
+        json={
+            "locations": locations,
+            "sources": sources,
+            "destinations": destinations,
+            "metrics": ["distance"],
+            "units": "m",
+        },
+        headers={"Authorization": api_key, "Content-Type": "application/json"},
+        timeout=(5, 30),
+    )
+    response.raise_for_status()
+    try:
+        distances = response.json()["distances"]
+        if len(distances) != count + 1 or any(len(row) != count * 2 for row in distances):
+            raise ValueError("matrix has an unexpected shape")
+        return distances
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise requests.RequestException("ORS returned an invalid distance matrix") from exc
+
+
+def recommend_safe_stations(
+    route_coordinates,
+    fuel_type,
+    current_location,
+    current_progress_miles,
+    current_fuel_gallons,
+    tank_capacity_gallons,
+    vehicle_mpg,
+    radius_miles=DEFAULT_ROUTE_RADIUS_MILES,
+    max_price=None,
+    route_distance_miles=None,
+):
+    """Return price/detour-ranked stations reachable before the fuel reserve."""
+    candidates = get_stations_near_route(
+        route_coordinates,
+        fuel_type,
+        radius_miles=radius_miles,
+        max_price=max_price,
+        route_distance_miles=route_distance_miles,
+    )
+    candidates = [
+        station for station in candidates
+        if station["route_progress_miles"] >= current_progress_miles - 0.25
+    ]
+    candidates.sort(
+        key=lambda station: (
+            max(0.0, station["route_progress_miles"] - current_progress_miles)
+            + station["distance_to_route_miles"],
+            station["price"],
+        )
+    )
+    candidates = candidates[:10]
+    if not candidates:
+        return []
+
+    api_key = os.getenv("HEIGIT_API_KEY")
+    if not api_key:
+        raise RouteConfigurationError("HEIGIT_API_KEY is not configured")
+    with requests.Session() as session:
+        distances = _get_matrix_distances(session, current_location, candidates, api_key)
+
+    safe_range_miles = (
+        max(0.0, current_fuel_gallons - tank_capacity_gallons * 0.10)
+        * vehicle_mpg
+    )
+    return rank_reachable_stations(
+        candidates,
+        distances,
+        current_progress_miles,
+        safe_range_miles,
+    )
 
 
 def plan_trip(data):
