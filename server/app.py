@@ -4,9 +4,11 @@ from requests.exceptions import RequestException
 
 if __package__:
     from .services.getFirebase import get_stations
+    from .services.stations import get_nearby_stations
     from .services.trip import save_trip
 else:
     from services.getFirebase import get_stations
+    from services.stations import get_nearby_stations
     from services.trip import save_trip
 
 app = Flask(__name__)
@@ -33,6 +35,25 @@ def create_trip():
 def stations():
     try:
         return get_stations(request.args.get("pageToken"))
+    except RuntimeError:
+        return {"error": "Check the backend Firestore credential configuration."}, 503
+    except (GoogleAuthError, RequestException):
+        return {"error": "Unable to fetch stations from Firestore."}, 502
+
+
+@app.get("/stations/nearby")
+def nearby_stations():
+    try:
+        stations = get_nearby_stations(
+            request.args.get("latitude"),
+            request.args.get("longitude"),
+            request.args.get("fuel_type"),
+            request.args.get("radius_miles", 10),
+            request.args.get("max_price"),
+        )
+        return {"stations": stations}
+    except (TypeError, ValueError):
+        return {"error": "Check the station query parameters"}, 400
     except RuntimeError:
         return {"error": "Check the backend Firestore credential configuration."}, 503
     except (GoogleAuthError, RequestException):
