@@ -1,4 +1,5 @@
 import hashlib
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,39 +28,34 @@ def firestore(monkeypatch):
 
 
 def test_create_trip_stores_token_hash_and_derives_geometry(firestore):
+    route = {
+        "features": [{
+            "geometry": {
+                "coordinates": [[-122.0, 37.0], [-121.0, 38.0]],
+            },
+        }],
+    }
     firestore.post.return_value.json.return_value = {
         "name": "projects/test/databases/(default)/documents/trips/trip-1",
         "updateTime": "2026-01-01T00:00:00Z",
         "fields": {
-            "route": {"mapValue": {"fields": {
-                "features": {"arrayValue": {"values": [{"mapValue": {"fields": {
-                    "geometry": {"mapValue": {"fields": {
-                        "coordinates": {"arrayValue": {"values": [
-                            {"arrayValue": {"values": [
-                                {"doubleValue": -122.0},
-                                {"doubleValue": 37.0},
-                            ]}},
-                            {"arrayValue": {"values": [
-                                {"doubleValue": -121.0},
-                                {"doubleValue": 38.0},
-                            ]}},
-                        ]}},
-                    }}}
-                }}}]}}
-            }}}
+            "route_json": {"stringValue": json.dumps(route, separators=(",", ":"))},
         },
     }
 
     document, token = trip_service.create_active_trip({
         "route_coordinates": [[-122.0, 37.0], [-121.0, 38.0]],
-        "route": {"features": []},
+        "route": route,
         "status": "active",
     })
 
     body = firestore.post.call_args.kwargs["json"]
     assert body["fields"]["trip_token_hash"]["stringValue"] == hashlib.sha256(token.encode()).hexdigest()
     assert "route_coordinates" not in body["fields"]
+    assert "route" not in body["fields"]
+    assert json.loads(body["fields"]["route_json"]["stringValue"]) == route
     assert document["trip_id"] == "trip-1"
+    assert document["route"] == route
     assert document["route_coordinates"] == [[-122.0, 37.0], [-121.0, 38.0]]
     assert "trip_token_hash" not in document or document["trip_token_hash"] != token
 

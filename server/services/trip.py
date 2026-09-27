@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import json
 import os
 import secrets
 from datetime import datetime, timezone
@@ -111,6 +112,9 @@ def _decode_document(document):
         key: _decode_value(value)
         for key, value in document.get("fields", {}).items()
     }
+    serialized_route = state.pop("route_json", None)
+    if serialized_route is not None:
+        state["route"] = json.loads(serialized_route)
     state["trip_id"] = document.get("name", "").rsplit("/", 1)[-1]
     state["_update_time"] = document.get("updateTime")
     if "route_coordinates" not in state:
@@ -122,11 +126,18 @@ def _decode_document(document):
 
 
 def _persisted_fields(state):
-    return {
+    persisted = {
         key: value
         for key, value in state.items()
-        if key not in {"trip_id", "_update_time", "route_coordinates"}
+        if key not in {"trip_id", "_update_time", "route", "route_coordinates", "route_json"}
     }
+    if "route" in state:
+        # GeoJSON coordinates are arrays of arrays, which Firestore Standard
+        # doesn't support. Store the document as JSON text and restore it on read.
+        persisted["route_json"] = json.dumps(
+            state["route"], separators=(",", ":"), allow_nan=False
+        )
+    return persisted
 
 
 def create_active_trip(state):
