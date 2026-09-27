@@ -4,10 +4,22 @@ from requests.exceptions import RequestException
 
 if __package__:
     from .services.getFirebase import get_stations
+    from .services.routing import (
+        AddressNotFoundError,
+        RouteConfigurationError,
+        RouteNotFoundError,
+        plan_trip,
+    )
     from .services.stations import get_nearby_stations
     from .services.trip import save_trip
 else:
     from services.getFirebase import get_stations
+    from services.routing import (
+        AddressNotFoundError,
+        RouteConfigurationError,
+        RouteNotFoundError,
+        plan_trip,
+    )
     from services.stations import get_nearby_stations
     from services.trip import save_trip
 
@@ -29,6 +41,24 @@ def create_trip():
         return {"error": str(error)}, 400
     except RuntimeError:
         return {"error": "Check the backend Firestore credential configuration."}, 503
+
+
+@app.post("/trip/plan")
+def preview_trip():
+    try:
+        return plan_trip(request.get_json(silent=True)), 200
+    except AddressNotFoundError as error:
+        return {"error": str(error)}, 422
+    except RouteNotFoundError as error:
+        return {"error": str(error)}, 422
+    except ValueError as error:
+        return {"error": str(error)}, 400
+    except RouteConfigurationError:
+        return {"error": "Check the OpenRouteService API key configuration."}, 503
+    except RuntimeError:
+        return {"error": "Check the backend Firestore credential configuration."}, 503
+    except (GoogleAuthError, RequestException):
+        return {"error": "Unable to calculate the route or fetch stations."}, 502
 
 
 @app.get("/stations")

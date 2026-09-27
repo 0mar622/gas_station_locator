@@ -40,3 +40,89 @@ def get_nearby_stations(latitude, longitude, fuel_type, radius_miles=10, max_pri
             nearby.append(station)
 
     return sorted(nearby, key=lambda station: station["distance_miles"])
+
+
+def _point_to_segment_distance_and_fraction(latitude, longitude, start, end):
+    """Return local distance from a point to a route segment and its fraction."""
+    start_lon, start_lat = start
+    end_lon, end_lat = end
+    scale_x = radians(1) * 3959 * cos(radians(latitude))
+    scale_y = radians(1) * 3959
+    start_x = (start_lon - longitude) * scale_x
+    start_y = (start_lat - latitude) * scale_y
+    end_x = (end_lon - longitude) * scale_x
+    end_y = (end_lat - latitude) * scale_y
+    delta_x = end_x - start_x
+    delta_y = end_y - start_y
+    segment_squared = delta_x * delta_x + delta_y * delta_y
+    if segment_squared == 0:
+        fraction = 0.0
+    else:
+        fraction = max(
+            0.0,
+            min(1.0, -(start_x * delta_x + start_y * delta_y) / segment_squared),
+        )
+    nearest_x = start_x + fraction * delta_x
+    nearest_y = start_y + fraction * delta_y
+    return sqrt(nearest_x * nearest_x + nearest_y * nearest_y), fraction
+
+
+def get_stations_near_route(
+    route_coordinates,
+    fuel_type,
+    radius_miles=5,
+    max_price=None,
+    estimated_range_miles=None,
+):
+    """Return matching stations within a corridor around a GeoJSON route line."""
+    radius_miles = float(radius_miles)
+    max_price = float(max_price) if max_price is not None else None
+    if not fuel_type or not 0 < radius_miles < float("inf"):
+        raise ValueError("Invalid route station filters")
+    if max_price is not None and not 0 <= max_price < float("inf"):
+        raise ValueError("max_price must be a finite nonnegative number")
+    if estimated_range_miles is not None and (
+        not 0 <= estimated_range_miles < float("inf")
+    ):
+        raise ValueError("estimated_range_miles must be finite and nonnegative")
+    if len(route_coordinates) < 2:
+        raise ValueError("Route must have at least two coordinates")
+
+    segments = []
+    route_progress = 0.0
+    for start, end in zip(route_coordinates, route_coordinates[1:]):
+        segment_length = _distance_miles(start[1], start[0], end[1], end[0])
+        segments.append((start, end, route_progress, segment_length))
+        route_progress += segment_length
+
+    nearby = []
+    for document in get_stations_by_fuel(fuel_type):
+        station = {name: _value(value) for name, value in document["fields"].items()}
+        latitude = float(station["latitude"])
+        longitude = float(station["longitude"])
+        price = float(station["price"])
+        if max_price is not None and price > max_price:
+            continue
+
+        closest_distance = float("inf")
+        closest_progress = 0.0
+        for start, end, progress_before, segment_length in segments:
+            distance, fraction = _point_to_segment_distance_and_fraction(
+                latitude,
+                longitude,
+                start,
+                end,
+            )
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_progress = progress_before + fraction * segment_length
+
+        if closest_distance > radius_miles:
+            continue
+        station["distance_to_route_miles"] = round(closest_distance, 2)
+        station["route_progress_miles"] = round(closest_progress, 2)
+        if estimated_range_miles is not None:
+            station["within_estimated_range"] = closest_progress <= estimated_range_miles
+        nearby.append(station)
+
+    return sorted(nearby, key=lambda station: station["route_progress_miles"])

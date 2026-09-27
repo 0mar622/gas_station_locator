@@ -41,6 +41,10 @@ Create a local environment file for API keys when needed. Never commit `.env`:
 cp .env.example .env
 ```
 
+Set `HEIGIT_API_KEY` in `.env` to enable trip previews. The key is used only by
+the backend for OpenRouteService geocoding and driving directions via HeiGIT; it
+is not sent to the browser.
+
 ## Save a trip
 
 Start Flask with `uv run python -m server.app`. Send a JSON body to
@@ -68,6 +72,33 @@ Invalid input returns 400 without writing. Missing credential configuration
 returns 503; authentication or Firestore request failures return 502.
 Each successful POST creates a new trip. A network timeout can leave the write's
 outcome uncertain, so check Firestore before retrying to avoid duplicate trips.
+
+## Preview a route and nearby stations
+
+`POST /trip/plan` geocodes the trip addresses with OpenRouteService, requests a
+driving route, and returns map-ready GeoJSON plus compatible stations in a
+route corridor. This is a preview only; it does not write to Firestore. The
+optional `radius_miles` defaults to 5 and `max_price` is an optional price cap.
+Station candidates are annotated with their route distance and whether they
+fall within the estimated range (`current_fuel_gallons * vehicle_mpg`), but are
+not hidden based on that estimate.
+
+```json
+{
+  "starting_location": "2500 Carlos Bee, Hayward CA",
+  "destination": "Oakland, CA",
+  "fuel_type": "Regular",
+  "current_fuel_gallons": 5.4,
+  "vehicle_mpg": 30.2,
+  "radius_miles": 5
+}
+```
+
+The response contains `route` (a GeoJSON FeatureCollection), route distance and
+duration, resolved origin/destination coordinates, and a `stations` array for
+map markers. Station prices are synthetic EIA-based estimates, not live pump
+prices. The separate `GET /stations/nearby` endpoint remains a point-centered
+search.
 
 ## Read stations from Firestore
 
