@@ -1,5 +1,8 @@
 # Gas Station Locator
 
+For the UI team's endpoint sequence, request examples, state handling, and error
+guidance, see the [frontend integration guide](FRONTEND_INTEGRATION.md).
+
 ## Install uv
 
 Install uv once on your computer. On macOS or Linux:
@@ -41,14 +44,15 @@ Create a local environment file for API keys when needed. Never commit `.env`:
 cp .env.example .env
 ```
 
-Set `HEIGIT_API_KEY` in `.env` to enable trip previews. The key is used only by
-the backend for OpenRouteService geocoding and driving directions via HeiGIT; it
-is not sent to the browser.
+Set `HEIGIT_API_KEY` in `.env` to enable trip previews and active trip tracking.
+The key is used only by the backend for OpenRouteService geocoding, directions,
+and distance matrices via HeiGIT; it is not sent to the browser.
 
-## Save a trip
+## Start and track a trip
 
-Start Flask with `uv run python -m server.app`. Send a JSON body to
-`POST http://127.0.0.1:5000/trip` from the frontend or Postman:
+Start Flask with `uv run python -m server.app`. Optionally call `POST /trip/plan`
+to preview a route without saving it. To begin tracking, call
+`POST http://127.0.0.1:5000/trip/start`:
 
 ```json
 {
@@ -56,32 +60,57 @@ Start Flask with `uv run python -m server.app`. Send a JSON body to
   "destination": "Oakland, CA",
   "fuel_type": "Regular",
   "current_fuel_gallons": 5.4,
-  "vehicle_mpg": 30.2
+  "tank_capacity_gallons": 14,
+  "vehicle_mpg": 30.2,
+  "radius_miles": 5
 }
 ```
 
-Set `Content-Type: application/json`. All fields are required; fuel is in US
-gallons and must be nonnegative, and MPG must be positive. The logic in
-`server/services/trip.py` saves the validated fields and a `created_at` timestamp
-to a new Firestore document at `trips/{trip_id}` using the existing credentials.
-The service account needs Firestore write permission.
+Provide exactly one of `current_fuel_gallons` or `current_fuel_percent`.
+`tank_capacity_gallons` is required; fuel values are US gallons, MPG must be
+positive, and the current level cannot exceed tank capacity. The endpoint plans
+the route and saves it with the trip's current fuel state in Firestore.
 
-After Firestore confirms creation, the endpoint returns HTTP 201 with
-`{"status": "created", "trip_id": "...", "trip": {...}}`.
-Invalid input returns 400 without writing. Missing credential configuration
-returns 503; authentication or Firestore request failures return 502.
-Each successful POST creates a new trip. A network timeout can leave the write's
-outcome uncertain, so check Firestore before retrying to avoid duplicate trips.
+The HTTP 201 response includes the `trip_id`, an `access_token`, route geometry,
+fuel estimates, and reachable station recommendations. Keep the token private;
+send it as `Authorization: Bearer <access_token>` when reading or updating that
+trip. Firestore stores only a hash of the token.
+
+While driving, send GPS updates to `POST /trip/{trip_id}/progress`:
+
+```json
+{
+  "update_id": "unique-client-generated-id",
+  "observed_at": "2026-09-26T19:20:00Z",
+  "latitude": 37.67,
+  "longitude": -122.08,
+  "accuracy_meters": 12
+}
+```
+
+When refueling, include `gallons_added` in a progress update. The backend tracks
+distance against the route and estimates fuel use from MPG. It keeps a 10% tank
+reserve when checking whether a station is reachable. GPS updates with accuracy
+worse than 50 meters do not affect distance estimates; duplicate and stale
+updates are ignored. After two accurate updates more than 0.5 miles off-route,
+the backend requests a replacement route. It marks the trip complete after two
+accurate updates within 0.1 miles of the destination.
+
+Call `GET /trip/{trip_id}` with the same authorization header to reload the
+latest trip state. Progress responses also include current estimates and station
+recommendations. The old save-only `POST /trip` endpoint has been replaced by
+`POST /trip/start`.
+
+Fuel use and cost are estimates based on GPS, MPG, and synthetic station prices.
+Exact fuel level requires vehicle telemetry or a reported refuel. Cost estimates
+use the next recommended station's price as a proxy for remaining fuel purchases.
 
 ## Preview a route and nearby stations
 
 `POST /trip/plan` geocodes the trip addresses with OpenRouteService, requests a
-driving route, and returns map-ready GeoJSON plus compatible stations in a
-route corridor. This is a preview only; it does not write to Firestore. The
-optional `radius_miles` defaults to 5 and `max_price` is an optional price cap.
-Station candidates are annotated with their route distance and whether they
-fall within the estimated range (`current_fuel_gallons * vehicle_mpg`), but are
-not hidden based on that estimate.
+driving route, and returns map-ready GeoJSON plus compatible stations in a route
+corridor. This is a preview only; it does not write to Firestore. The optional
+`radius_miles` defaults to 5 and `max_price` is an optional price cap.
 
 ```json
 {

@@ -49,7 +49,7 @@ def get_stations(page_token=None):
 
 
 def get_stations_by_fuel(fuel_type):
-    """Get station documents matching a fuel type."""
+    """Get canonical and legacy station documents for a fuel type."""
     key_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     if not key_file:
         raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS is not configured")
@@ -64,24 +64,42 @@ def get_stations_by_fuel(fuel_type):
         f"https://firestore.googleapis.com/v1/projects/{project_id}"
         f"/databases/{database_id}/documents:runQuery"
     )
-    query = {
-        "structuredQuery": {
-            "from": [{"collectionId": "stations"}],
-            "where": {
-                "fieldFilter": {
-                    "field": {"fieldPath": "fuel_type"},
-                    "op": "EQUAL",
-                    "value": {"stringValue": fuel_type.lower()},
+    with AuthorizedSession(credentials, refresh_timeout=10) as session:
+        queries = [
+            {
+                "structuredQuery": {
+                    "from": [{"collectionId": "stations"}],
+                    "where": {
+                        "fieldFilter": {
+                            "field": {"fieldPath": "fuel_type"},
+                            "op": "EQUAL",
+                            "value": {"stringValue": fuel_type.lower()},
+                        }
+                    },
                 }
             },
-        }
-    }
+            {
+                "structuredQuery": {
+                    "from": [{"collectionId": "stations"}],
+                    "where": {
+                        "unaryFilter": {
+                            "field": {"fieldPath": f"{fuel_type.lower()}_price"},
+                            "op": "IS_NOT_NULL",
+                        }
+                    },
+                }
+            },
+        ]
+        documents = {}
+        for query in queries:
+            response = session.post(url, json=query, timeout=10)
+            response.raise_for_status()
+            for item in response.json():
+                document = item.get("document")
+                if document:
+                    documents[document.get("name", id(document))] = document
 
-    with AuthorizedSession(credentials, refresh_timeout=10) as session:
-        response = session.post(url, json=query, timeout=10)
-        response.raise_for_status()
-
-    return [item["document"] for item in response.json() if "document" in item]
+    return list(documents.values())
 
 
 if __name__ == "__main__":

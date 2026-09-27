@@ -1,12 +1,61 @@
 """Find nearby gas stations."""
 
-from math import asin, cos, radians, sin, sqrt
+from math import asin, cos, isfinite, radians, sin, sqrt
 
 from .getFirebase import get_stations_by_fuel
 
 
+LEGACY_PRICE_FIELDS = {
+    "regular": "regular_price",
+    "midgrade": "midgrade_price",
+    "premium": "premium_price",
+    "diesel": "diesel_price",
+}
+
+
 def _value(field):
-    return next(iter(field.values()))
+    key, value = next(iter(field.items()))
+    if key == "mapValue":
+        return {name: _value(item) for name, item in value.get("fields", {}).items()}
+    if key == "arrayValue":
+        return [_value(item) for item in value.get("values", [])]
+    return value
+
+
+def normalize_station(document, requested_fuel_type=None):
+    """Normalize canonical seeded records and legacy per-fuel price records."""
+    fields = {
+        name: _value(value)
+        for name, value in document.get("fields", {}).items()
+    }
+    fuel_type = str(fields.get("fuel_type", requested_fuel_type or "")).lower()
+    if not fuel_type:
+        return None
+
+    price = fields.get("price")
+    if price is None:
+        price = fields.get(LEGACY_PRICE_FIELDS.get(fuel_type, ""))
+    if price is None:
+        return None
+
+    try:
+        latitude = float(fields["latitude"])
+        longitude = float(fields["longitude"])
+        price = float(price)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(map(isfinite, (latitude, longitude, price))):
+        return None
+
+    station = {
+        **fields,
+        "id": fields.get("id") or document.get("name", "").rsplit("/", 1)[-1],
+        "fuel_type": fuel_type,
+        "latitude": latitude,
+        "longitude": longitude,
+        "price": price,
+    }
+    return station
 
 
 def _distance_miles(lat1, lon1, lat2, lon2):
@@ -28,7 +77,9 @@ def get_nearby_stations(latitude, longitude, fuel_type, radius_miles=10, max_pri
 
     nearby = []
     for document in get_stations_by_fuel(fuel_type):
-        station = {name: _value(value) for name, value in document["fields"].items()}
+        station = normalize_station(document, fuel_type)
+        if station is None:
+            continue
         distance = _distance_miles(
             latitude,
             longitude,
@@ -67,12 +118,50 @@ def _point_to_segment_distance_and_fraction(latitude, longitude, start, end):
     return sqrt(nearest_x * nearest_x + nearest_y * nearest_y), fraction
 
 
+def closest_route_projection(
+    latitude,
+    longitude,
+    route_coordinates,
+    route_distance_miles=None,
+):
+    """Return distance, progress, and snapped coordinate for a route point."""
+    best = (float("inf"), 0.0, None)
+    route_progress = 0.0
+    geometry_distance = sum(
+        _distance_miles(start[1], start[0], end[1], end[0])
+        for start, end in zip(route_coordinates, route_coordinates[1:])
+    )
+    progress_scale = (
+        route_distance_miles / geometry_distance
+        if route_distance_miles is not None and geometry_distance > 0
+        else 1.0
+    )
+    for start, end in zip(route_coordinates, route_coordinates[1:]):
+        segment_length = _distance_miles(start[1], start[0], end[1], end[0])
+        distance, fraction = _point_to_segment_distance_and_fraction(
+            latitude,
+            longitude,
+            start,
+            end,
+        )
+        progress = (route_progress + fraction * segment_length) * progress_scale
+        snapped = [
+            start[0] + fraction * (end[0] - start[0]),
+            start[1] + fraction * (end[1] - start[1]),
+        ]
+        if distance < best[0]:
+            best = (distance, progress, snapped)
+        route_progress += segment_length
+    return best
+
+
 def get_stations_near_route(
     route_coordinates,
     fuel_type,
     radius_miles=5,
     max_price=None,
     estimated_range_miles=None,
+    route_distance_miles=None,
 ):
     """Return matching stations within a corridor around a GeoJSON route line."""
     radius_miles = float(radius_miles)
@@ -88,39 +177,29 @@ def get_stations_near_route(
     if len(route_coordinates) < 2:
         raise ValueError("Route must have at least two coordinates")
 
-    segments = []
-    route_progress = 0.0
-    for start, end in zip(route_coordinates, route_coordinates[1:]):
-        segment_length = _distance_miles(start[1], start[0], end[1], end[0])
-        segments.append((start, end, route_progress, segment_length))
-        route_progress += segment_length
-
     nearby = []
     for document in get_stations_by_fuel(fuel_type):
-        station = {name: _value(value) for name, value in document["fields"].items()}
-        latitude = float(station["latitude"])
-        longitude = float(station["longitude"])
-        price = float(station["price"])
+        station = normalize_station(document, fuel_type)
+        if station is None:
+            continue
+        latitude = station["latitude"]
+        longitude = station["longitude"]
+        price = station["price"]
         if max_price is not None and price > max_price:
             continue
 
-        closest_distance = float("inf")
-        closest_progress = 0.0
-        for start, end, progress_before, segment_length in segments:
-            distance, fraction = _point_to_segment_distance_and_fraction(
-                latitude,
-                longitude,
-                start,
-                end,
-            )
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_progress = progress_before + fraction * segment_length
+        closest_distance, closest_progress, projection = closest_route_projection(
+            latitude,
+            longitude,
+            route_coordinates,
+            route_distance_miles,
+        )
 
         if closest_distance > radius_miles:
             continue
         station["distance_to_route_miles"] = round(closest_distance, 2)
         station["route_progress_miles"] = round(closest_progress, 2)
+        station["route_projection"] = projection
         if estimated_range_miles is not None:
             station["within_estimated_range"] = closest_progress <= estimated_range_miles
         nearby.append(station)
