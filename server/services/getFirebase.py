@@ -25,7 +25,7 @@ def get_stations(page_token=None):
         )
     except (OSError, ValueError) as exc:
         raise RuntimeError("Unable to load Firestore credentials") from exc
-
+ 
     if not credentials.project_id:
         raise RuntimeError("Firestore credentials must include a project_id")
 

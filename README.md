@@ -21,6 +21,34 @@ Create a local environment file for API keys when needed. Never commit `.env`:
 cp .env.example .env
 ```
 
+## Save a trip
+
+Start Flask with `uv run python -m server.app`. Send a JSON body to
+`POST http://127.0.0.1:5000/trip` from the frontend or Postman:
+
+```json
+{
+  "starting_location": "2500 Carlos Bee, Hayward CA",
+  "destination": "Oakland, CA",
+  "fuel_type": "Regular",
+  "current_fuel_gallons": 5.4,
+  "vehicle_mpg": 30.2
+}
+```
+
+Set `Content-Type: application/json`. All fields are required; fuel is in US
+gallons and must be nonnegative, and MPG must be positive. The logic in
+`server/services/trip.py` saves the validated fields and a `created_at` timestamp
+to a new Firestore document at `trips/{trip_id}` using the existing credentials.
+The service account needs Firestore write permission.
+
+After Firestore confirms creation, the endpoint returns HTTP 201 with
+`{"status": "created", "trip_id": "...", "trip": {...}}`.
+Invalid input returns 400 without writing. Missing credential configuration
+returns 503; authentication or Firestore request failures return 502.
+Each successful POST creates a new trip. A network timeout can leave the write's
+outcome uncertain, so check Firestore before retrying to avoid duplicate trips.
+
 ## Read stations from Firestore
 
 In your root `.env`, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your
