@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gas Station Locator</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
       :root {
         --bg: #f4f7fb;
@@ -21,6 +22,10 @@
 
       * {
         box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
       }
 
       body {
@@ -159,6 +164,10 @@
         font-size: 1.45rem;
       }
 
+      #trip-title {
+        margin: 0;
+      }
+
       .summary {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -193,13 +202,12 @@
         overflow: hidden;
         border: 1px solid var(--border);
         background: #e2e8f0;
-        min-height: 280px;
+        min-height: 320px;
       }
 
-      .map-box iframe {
+      #route-map {
         width: 100%;
-        min-height: 320px;
-        border: 0;
+        height: 380px;
       }
 
       .stations-list {
@@ -214,6 +222,108 @@
         border-left: 4px solid var(--accent);
         border-radius: 12px;
         padding: 14px 16px;
+      }
+
+      .station-card.recommended {
+        border-left-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
+      }
+
+      .demo-notice,
+      .warning-box {
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.9rem;
+      }
+
+      .demo-notice {
+        background: #eff6ff;
+        color: #1e40af;
+        border: 1px solid #bfdbfe;
+      }
+
+      .warning-box {
+        display: none;
+        margin-top: 14px;
+        background: #fffbeb;
+        color: #92400e;
+        border: 1px solid #fde68a;
+      }
+
+      .cost-note {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .demo-badge {
+        display: inline-block;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      .demo-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .secondary-btn,
+      .refuel-btn {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        font-weight: 700;
+        padding: 11px 15px;
+        cursor: pointer;
+      }
+
+      .refuel-btn {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .trip-timeline {
+        display: none;
+        margin-top: 16px;
+        padding: 0;
+        list-style: none;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .trip-timeline li {
+        padding: 6px 0;
+        border-bottom: 1px solid #eef2f7;
+      }
+
+      .trip-timeline li:last-child {
+        border-bottom: 0;
+      }
+
+      .vehicle-marker {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border: 3px solid #fff;
+        border-radius: 50%;
+        background: var(--primary);
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+        color: #fff;
+        font-size: 15px;
       }
 
       .station-card h3 {
@@ -265,11 +375,11 @@
             <div class="row">
               <div class="field">
                 <label for="starting_location">Starting location</label>
-                <input id="starting_location" name="starting_location" type="text" placeholder="2500 Carlos Bee, Hayward CA" required />
+                <input id="starting_location" name="starting_location" type="text" value="25800 Carlos Bee Blvd, Hayward, CA" required />
               </div>
               <div class="field">
                 <label for="destination">Destination</label>
-                <input id="destination" name="destination" type="text" placeholder="Oakland, CA" required />
+                <input id="destination" name="destination" type="text" value="San Francisco International Airport (SFO)" required />
               </div>
             </div>
 
@@ -284,95 +394,85 @@
                 </select>
               </div>
               <div class="field">
-                <label for="payment_method">Payment method</label>
-                <select id="payment_method" name="payment_method">
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="vehicle_year">Vehicle year</label>
-              <input id="vehicle_year" name="vehicle_year" type="number" min="1950" max="2100" placeholder="2022" required />
-            </div>
-
-            <div class="row">
-              <div class="field">
-                <label for="vehicle_make">Vehicle make</label>
-                <input id="vehicle_make" name="vehicle_make" type="text" placeholder="Toyota" required />
-              </div>
-              <div class="field">
-                <label for="vehicle_model">Vehicle model</label>
-                <input id="vehicle_model" name="vehicle_model" type="text" placeholder="Camry" required />
-              </div>
-            </div>
-
-            <div class="row">
-              <div class="field">
                 <label for="vehicle_mpg">Vehicle MPG</label>
-                <input id="vehicle_mpg" name="vehicle_mpg" type="number" min="1" step="0.1" placeholder="30.2" required />
+                <input id="vehicle_mpg" name="vehicle_mpg" type="number" min="1" step="0.1" value="25" required />
               </div>
+            </div>
+
+            <div class="row">
               <div class="field">
                 <label for="fuel_capacity_gallons">Fuel tank capacity (gallons)</label>
-                <input id="fuel_capacity_gallons" name="fuel_capacity_gallons" type="number" min="1" step="0.1" placeholder="15.5" required />
+                <input id="fuel_capacity_gallons" name="fuel_capacity_gallons" type="number" min="1" step="0.1" value="15" required />
+              </div>
+              <div class="field">
+                <label for="current_fuel_gallons">Current Fuel Left (gallons)</label>
+                <input id="current_fuel_gallons" name="current_fuel_gallons" type="number" min="0" step="0.1" value="2.1" required />
               </div>
             </div>
 
-            <div class="fuel-row">
-              <div class="field">
-                <label for="current_fuel_gallons">Current Fuel Left (gallons)</label>
-                <input id="current_fuel_gallons" name="current_fuel_gallons" type="number" min="0" step="0.1" placeholder="5.4" required />
-              </div>
-              <div class="field">
-                <label for="current_fuel_percent">Current Fuel Left (%)</label>
-                <input id="current_fuel_percent" name="current_fuel_percent" type="number" min="0" max="100" step="0.1" placeholder="40" required />
-              </div>
-              <div class="field">
-                <label for="payment_amount">Payment amount</label>
-                <input id="payment_amount" name="payment_amount" type="number" min="0" step="0.01" placeholder="50.00" />
-              </div>
-            </div>
+            <div class="demo-notice">Demo mode: location is simulated. The preset fuel level is chosen to demonstrate station recommendations.</div>
 
             <div class="actions">
               <button type="submit" class="primary-btn">Plan trip</button>
               <div id="status" class="status" aria-live="polite">Ready to plan.</div>
             </div>
           </form>
+          <div id="active-panel" hidden>
+            <h2>Simulated drive</h2>
+            <p id="active-panel-copy" class="subtitle">Trip progress will appear here.</p>
+            <div class="demo-notice">This demo sends simulated route points to the trip API. Each started demo trip is saved in Firebase.</div>
+            <div id="active-status" class="status" aria-live="polite"></div>
+          </div>
         </section>
 
         <aside class="card result-card">
-          <h2>Trip preview</h2>
-          <p class="subtitle">The backend response will appear here.</p>
+          <div class="actions">
+            <h2 id="trip-title">Trip preview</h2>
+            <span id="demo-badge" class="demo-badge" hidden>SIMULATED DEMO</span>
+          </div>
+          <p id="trip-subtitle" class="subtitle">Preview the route and stations before starting the demo.</p>
 
           <div class="summary">
             <div class="summary-item">
-              <span class="label">Range</span>
+              <span class="label" id="range-label">Range</span>
               <span class="value" id="range-value">—</span>
             </div>
             <div class="summary-item">
-              <span class="label">Distance</span>
+                <span class="label" id="distance-label">Distance</span>
               <span class="value" id="distance-value">—</span>
             </div>
             <div class="summary-item">
-              <span class="label">Duration</span>
+                <span class="label" id="duration-label">Duration</span>
               <span class="value" id="duration-value">—</span>
             </div>
             <div class="summary-item">
-              <span class="label">Payment</span>
-              <span class="value" id="payment-value">—</span>
+              <span class="label" id="fuel-label">Fuel left</span>
+              <span class="value" id="fuel-value">—</span>
             </div>
           </div>
+
+          <div id="warning-box" class="warning-box" role="status"></div>
+          <div id="cost-note" class="cost-note" hidden></div>
+
+          <div class="demo-controls">
+            <button id="start-demo" class="primary-btn" type="button" hidden>Start demo trip</button>
+            <button id="next-step" class="primary-btn" type="button" hidden>Next step</button>
+            <button id="stop-refuel" class="refuel-btn" type="button" hidden>Stop &amp; refuel</button>
+            <button id="reset-demo" class="secondary-btn" type="button" hidden>Plan another trip</button>
+          </div>
+
+          <ul id="trip-timeline" class="trip-timeline" aria-live="polite"></ul>
 
           <div class="stations-list" id="stations-list"></div>
 
           <div class="map-box">
-            <iframe id="route-map" title="Route map" srcdoc="<!doctype html><html><body style='margin:0;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#334155;'>Route map will appear here.</body></html>"></iframe>
+            <div id="route-map" role="application" aria-label="Trip route map"></div>
           </div>
         </aside>
       </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>
