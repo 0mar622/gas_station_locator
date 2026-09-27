@@ -86,7 +86,7 @@ def test_invalid_fields_do_not_write(trip, firestore, field, value):
     trip[field] = value
     response = app.test_client().post("/trip", json=trip)
     assert response.status_code == 400
-    assert field in response.get_json()["fields"]
+    assert field in response.get_json()["error"]
     firestore.post.assert_not_called()
 
 
