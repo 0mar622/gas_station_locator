@@ -1,6 +1,20 @@
 [project]
 name = "gas-station-locator"
 version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "folium>=0.20.0",
+     "requests>=2.34.2",
+]
+
+[project.scripts]
+gas-station-locator = "gas_station_locator:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
 description = "MVP web app for finding reachable, cost-effective gas stations"
 readme = "README.md"
 requires-python = ">=3.11"

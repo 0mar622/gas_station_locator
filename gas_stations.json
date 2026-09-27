@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Chevron Hayward",
+    "lat": 37.6602,
+    "lng": -122.0861,
+    "price": 4.65,
+    "fuel_type": "regular"
+  },
+  {
+    "name": "Shell Fremont Hub",
+    "lat": 37.5492,
+    "lng": -121.9814,
+    "price": 4.59,
+    "fuel_type": "regular"
+  },
+  {
+    "name": "Safeway Fuel Union City",
+    "lat": 37.5884,
+    "lng": -122.0192,
+    "price": 4.39,
+    "fuel_type": "regular"
+  },
+  {
+    "name": "Costco Gasoline Hayward",
+    "lat": 37.6415,
+    "lng": -122.1023,
+    "price": 4.19,
+    "fuel_type": "regular"
+  }
+]
