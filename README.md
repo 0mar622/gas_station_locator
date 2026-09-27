@@ -85,3 +85,26 @@ browser, start Flask with `uv run python -m server.app` and open
 
 The service account needs Firestore read permission through Google Cloud IAM.
 Credentials stay on the backend. This local MVP endpoint has no user authentication.
+
+## Seed the California station dataset
+
+The California CSV contains synthetic EIA-based estimates, not observed pump
+prices. Review the CSV before seeding. `scripts/seed.py` uses the same service
+account configuration as the Firestore reader, and defaults to a no-write dry
+run:
+
+```bash
+uv run python scripts/seed.py
+```
+
+After confirming the preview, write the records to the Firestore `stations`
+collection with:
+
+```bash
+uv run python scripts/seed.py --apply
+```
+
+Each CSV station/fuel row becomes one document with `id`, `name`, `latitude`,
+`longitude`, `price`, and `fuel_type`. The stable document ID combines the OSM
+station ID and fuel type, so rerunning the seed updates those documents instead
+of creating duplicates. Use `--csv PATH` to seed a different CSV.
